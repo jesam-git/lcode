@@ -14,21 +14,23 @@ jobs:
         run: |
           response=$(curl -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
             -X POST "https://lcnc-api.browserstack.com/api/v1/test-suite/${TEST_SUITE_ID}/run")
+          echo "Response: $response"
 
           BUILD_ID=$(echo "$response" | jq -r '.build_id')
+          echo "Extracted BUILD_ID: $BUILD_ID"
 
           echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
-          echo "Build ID: $BUILD_ID"
 
       - name: Check Build Status
         run: |
+          echo "Using BUILD_ID: $BUILD_ID"
+
           buildStatus=""
           retryInterval=30
 
           while [[ "$buildStatus" != "passed" && "$buildStatus" != "failed" ]]; do
             response=$(curl -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
               -s "https://lcnc-api.browserstack.com/api/v1/builds/${BUILD_ID}/status")
-
             buildStatus=$(echo "$response" | jq -r '.build_status')
             echo "Current Status: $buildStatus"
             sleep $retryInterval
@@ -36,8 +38,8 @@ jobs:
 
           if [[ "$buildStatus" == "passed" ]]; then
             echo "✅ Build passed"
-            # Add steps here if needed
           else
             echo "❌ Build failed"
             exit 1
           fi
+
