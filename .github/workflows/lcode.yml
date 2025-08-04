@@ -1,33 +1,43 @@
 name: Test and Deploy
-on: workflow_dispatch
+on: [push]
+
 jobs:
- build:
-   runs-on: ubuntu-latest
-   steps:
-     - name: Trigger Test Suite
-       id: trigger_test_suite
-       run: |
-         response=$(curl -u jeswin_RrH40p:9TyqK4kTrq7aavs65XL8 -X POST https://lcnc-api.browserstack.com/api/v1/test-suite/2a83dd99d9a8782f1d2713e4d652c01f38dfd0f2/run)
-         BUILD_ID=$(echo $response | jq -r '.build_id')
-         echo "::set-output name=build_id::$BUILD_ID"
-         echo "Build ID: $BUILD_ID"
-     - name: Check Build Status
-       run: |
-         buildStatus=""
-         retryInterval=30
-         BUILD_ID=$
-         while [[ ("$buildStatus" != "passed" && "$buildStatus" != "failed") ]]; do
-           response=$(curl -u jeswin_RrH40p:9TyqK4kTrq7aavs65XL8 -s https://lcnc-api.browserstack.com/api/v1/builds/$BUILD_ID/status)
-           buildStatus=$(echo $response | jq -r '.build_status')
-           sleep $retryInterval
-         done
-         if [[ "$buildStatus" == "passed" ]]; then
-           echo "Build passed"
-           # Add further steps for actions to be taken if build passed
-         elif [[ "$buildStatus" == "failed" ]]; then
-           echo "Build failed"
-           exit 1
-         else
-           echo "Build status unstable"
-           exit 1
-         fi
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TEST_SUITE_ID: ${{ secrets.TEST_SUITE_ID }}
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+    steps:
+      - name: Trigger Test Suite
+        id: trigger_test_suite
+        run: |
+          response=$(curl -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
+            -X POST "https://lcnc-api.browserstack.com/api/v1/test-suite/${TEST_SUITE_ID}/run")
+
+          BUILD_ID=$(echo "$response" | jq -r '.build_id')
+
+          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
+          echo "Build ID: $BUILD_ID"
+
+      - name: Check Build Status
+        run: |
+          buildStatus=""
+          retryInterval=30
+
+          while [[ "$buildStatus" != "passed" && "$buildStatus" != "failed" ]]; do
+            response=$(curl -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
+              -s "https://lcnc-api.browserstack.com/api/v1/builds/${BUILD_ID}/status")
+
+            buildStatus=$(echo "$response" | jq -r '.build_status')
+            echo "Current Status: $buildStatus"
+            sleep $retryInterval
+          done
+
+          if [[ "$buildStatus" == "passed" ]]; then
+            echo "✅ Build passed"
+            # Add steps here if needed
+          else
+            echo "❌ Build failed"
+            exit 1
+          fi
