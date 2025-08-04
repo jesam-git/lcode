@@ -1,4 +1,5 @@
 name: Test and Deploy
+
 on: [push]
 
 jobs:
@@ -8,38 +9,36 @@ jobs:
       TEST_SUITE_ID: ${{ secrets.TEST_SUITE_ID }}
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+      BASE_URL: ${{ secrets.BASE_URL }}  # Optional: make this dynamic
     steps:
-     - name: Trigger Test Suite
-       id: trigger_test_suite
-       run: |
-    echo "Triggering test suite: $TEST_SUITE_ID"
+      - name: Trigger Test Suite
+        id: trigger_test_suite
+        run: |
+          echo "Triggering test suite: $TEST_SUITE_ID"
 
-     response=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
-     -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
-     -X POST "https://lcnc-api.browserstack.com/api/v1/test-suite/${TEST_SUITE_ID}/run" \
-  -H "Content-Type: application/json" \
-  -d "{\"base_url\": \"${BASE_URL}\"}")
+          response=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+            -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
+            -X POST "https://lcnc-api.browserstack.com/api/v1/test-suite/${TEST_SUITE_ID}/run" \
+            -H "Content-Type: application/json" \
+            -d "{\"base_url\": \"${BASE_URL}\"}")
 
+          body=$(echo "$response" | sed -n '/^HTTP_STATUS:/!p')
+          status=$(echo "$response" | sed -n 's/^HTTP_STATUS://p')
 
-    body=$(echo "$response" | sed -n '/^HTTP_STATUS:/!p')
-    status=$(echo "$response" | sed -n 's/^HTTP_STATUS://p')
+          echo "HTTP Status: $status"
+          echo "Response Body: $body"
 
-  echo "HTTP Status: $status"
-  echo "Response Body: $body"
+          if [ "$status" -ne 200 ]; then
+            echo "❌ Failed to trigger test suite. Status: $status"
+            exit 1
+          fi
 
-    if [ "$status" -ne 200 ]; then
-  echo "❌ Failed to trigger test suite. Status: $status"
-      exit 1
-    fi
+          BUILD_ID=$(echo "$body" | jq -r '.build_id')
 
-    BUILD_ID=$(echo "$body" | jq -r '.build_id')
+          if [[ "$BUILD_ID" == "null" || -z "$BUILD_ID" ]]; then
+            echo "❌ Error: build_id not found in response"
+            exit 1
+          fi
 
-    if [[ "$BUILD_ID" == "null" || -z "$BUILD_ID" ]]; then
-  echo "❌ Error: build_id not found in response"
-      exit 1
-    fi
-
-    echo "✅ Extracted BUILD_ID: $BUILD_ID"
-   echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
-
-
+          echo "✅ Extracted BUILD_ID: $BUILD_ID"
+          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
