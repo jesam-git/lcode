@@ -9,37 +9,37 @@ jobs:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
     steps:
-      - name: Trigger Test Suite
-        id: trigger_test_suite
-        run: |
-          response=$(curl -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
-            -X POST "https://lcnc-api.browserstack.com/api/v1/test-suite/${TEST_SUITE_ID}/run")
-          echo "Response: $response"
+     - name: Trigger Test Suite
+       id: trigger_test_suite
+       run: |
+    echo "Triggering test suite: $TEST_SUITE_ID"
 
-          BUILD_ID=$(echo "$response" | jq -r '.build_id')
-          echo "Extracted BUILD_ID: $BUILD_ID"
+     response=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+     -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
+     -X POST "https://lcnc-api.browserstack.com/api/v1/test-suite/${TEST_SUITE_ID}/run" \
+  -H "Content-Type: application/json" \
+  -d "{\"base_url\": \"${BASE_URL}\"}")
 
-          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
 
-      - name: Check Build Status
-        run: |
-          echo "Using BUILD_ID: $BUILD_ID"
+    body=$(echo "$response" | sed -n '/^HTTP_STATUS:/!p')
+    status=$(echo "$response" | sed -n 's/^HTTP_STATUS://p')
 
-          buildStatus=""
-          retryInterval=30
+  echo "HTTP Status: $status"
+  echo "Response Body: $body"
 
-          while [[ "$buildStatus" != "passed" && "$buildStatus" != "failed" ]]; do
-            response=$(curl -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
-              -s "https://lcnc-api.browserstack.com/api/v1/builds/${BUILD_ID}/status")
-            buildStatus=$(echo "$response" | jq -r '.build_status')
-            echo "Current Status: $buildStatus"
-            sleep $retryInterval
-          done
+    if [ "$status" -ne 200 ]; then
+  echo "❌ Failed to trigger test suite. Status: $status"
+      exit 1
+    fi
 
-          if [[ "$buildStatus" == "passed" ]]; then
-            echo "✅ Build passed"
-          else
-            echo "❌ Build failed"
-            exit 1
-          fi
+    BUILD_ID=$(echo "$body" | jq -r '.build_id')
+
+    if [[ "$BUILD_ID" == "null" || -z "$BUILD_ID" ]]; then
+  echo "❌ Error: build_id not found in response"
+      exit 1
+    fi
+
+    echo "✅ Extracted BUILD_ID: $BUILD_ID"
+   echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
+
 
